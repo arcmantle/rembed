@@ -54,7 +54,7 @@ type InlineAsset struct {
 
 var scriptCloseTagRe = regexp.MustCompile(`(?i)</script>`)
 var markdownInlineLinkRe = regexp.MustCompile(`(!?\[[^\]]*\]\()([^\)]+)(\))`)
-var htmlSrcHrefRe = regexp.MustCompile(`(?i)(href|src)\s*=\s*(["'])([^"']+)\2`)
+var htmlSrcHrefRe = regexp.MustCompile(`(?i)(href|src)\s*=\s*(?:"([^"]+)"|'([^']+)')`)
 
 // RewriteRelativeLinks rewrites relative markdown and HTML links to absolute URLs.
 //
@@ -98,7 +98,7 @@ func RewriteRelativeLinks(markdown, baseURL string) string {
 			return match
 		}
 
-		target := strings.TrimSpace(parts[3])
+		target := strings.TrimSpace(firstNonEmpty(parts[2], parts[3]))
 		if !isRelativeReference(target) {
 			return match
 		}
@@ -109,7 +109,10 @@ func RewriteRelativeLinks(markdown, baseURL string) string {
 		}
 
 		attr := parts[1]
-		quote := parts[2]
+		quote := `"`
+		if parts[2] == "" {
+			quote = "'"
+		}
 		return attr + "=" + quote + resolved + quote
 	})
 
@@ -165,13 +168,17 @@ func InlineReferencedAssets(markdown string, assets map[string]InlineAsset) stri
 			return match
 		}
 
-		resolved, ok := dataURLs[normalizeAssetReference(parts[3])]
+		target := firstNonEmpty(parts[2], parts[3])
+		resolved, ok := dataURLs[normalizeAssetReference(target)]
 		if !ok {
 			return match
 		}
 
 		attr := parts[1]
-		quote := parts[2]
+		quote := `"`
+		if parts[2] == "" {
+			quote = "'"
+		}
 		return attr + "=" + quote + resolved + quote
 	})
 
@@ -332,6 +339,15 @@ func replaceOne(content, old, replacement, label string) (string, error) {
 
 func escapeInlineScript(js string) string {
 	return scriptCloseTagRe.ReplaceAllString(js, `<\/script>`)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func prepareMarkdown(markdown string, opts WriteOptions) string {
